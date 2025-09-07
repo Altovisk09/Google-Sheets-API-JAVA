@@ -25,13 +25,10 @@ public class GoogleSheetsConfig {
 
     @Value("${google.credentials.client-id}")
     private String clientId;
-
     @Value("${google.credentials.client-email}")
     private String clientEmail;
-
     @Value("${google.credentials.private-key-id}")
     private String privateKeyId;
-
     @Value("${google.credentials.private-key}")
     private String privateKey;
 
