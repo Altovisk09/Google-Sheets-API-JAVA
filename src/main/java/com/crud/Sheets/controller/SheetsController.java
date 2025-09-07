@@ -38,4 +38,12 @@ public class SheetsController {
         itemService.delete(id);
         return ResponseEntity.ok("Item deletado com sucesso.");
     }
+    @PostMapping("/batch")
+    public ResponseEntity<String> createBatch(@RequestBody List<Item> items) throws IOException {
+        if (items == null || items.isEmpty()) {
+            return ResponseEntity.badRequest().body("A lista de itens não pode ser vazia.");
+        }
+        itemService.createBatch(items);
+        return ResponseEntity.ok(items.size() + " itens criados com sucesso.");
+    }
 }
