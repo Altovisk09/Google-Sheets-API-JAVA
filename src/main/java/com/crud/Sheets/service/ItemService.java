@@ -10,6 +10,8 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -27,11 +29,11 @@ public class ItemService {
     public void create(Item item) throws IOException {
         ValueRange appendBody = new ValueRange()
                 .setValues(List.of(List.of(item.getId(), item.getName(), item.getQuantity())));
-            sheetsService.spreadsheets().values()
-                    .append(spreadsheetId, DATA_SHEET_NAME, appendBody)
-                    .setValueInputOption("RAW")
-                    .execute();
-            logAction("CREATE", "Item criado: " + item.toString());
+        sheetsService.spreadsheets().values()
+                .append(spreadsheetId, DATA_SHEET_NAME, appendBody)
+                .setValueInputOption("RAW")
+                .execute();
+        logAction("CREATE", "Item criado: " + item.toString());
     }
 
     public List<Item> readAll() throws IOException {
@@ -46,23 +48,32 @@ public class ItemService {
 
         return values.stream()
                 .skip(1) // pula cabeçalho
-                .filter(row -> !row.isEmpty())
+                .filter(row -> !row.isEmpty() && row.size() > 0) // Garante que a linha e a primeira coluna não são vazias
                 .map(row -> {
-                    Long id = row.size() > 0 ? Long.parseLong(row.get(0).toString()) : null;
-                    String name = row.size() > 1 ? row.get(1).toString() : null;
+                    // Trata o caso de a célula do ID estar vazia ou não ser um número
+                    Long id = null;
+                    try {
+                        id = Long.parseLong(row.get(0).toString());
+                    } catch (NumberFormatException e) {
+                        // Ignora a linha se o ID não for um número válido
+                        return null;
+                    }
+                    String name = row.size() > 1 ? row.get(1).toString() : "Nome não disponível";
                     int qty = row.size() > 2 ? Integer.parseInt(row.get(2).toString()) : 0;
                     return new Item(id, name, qty);
                 })
+                .filter(item -> item != null) // Remove as linhas que foram invalidadas (ID não numérico)
                 .collect(Collectors.toList());
     }
-    public void update(Long id, Item item) throws IOException{
+
+    public void update(Long id, Item item) throws IOException {
         int rowIndex = findRowById(id);
         if (rowIndex == -1) {
             throw new RuntimeException("Item não encontrado com o ID: " + id);
         }
         String range = String.format("%s!A%d:C%d", DATA_SHEET_NAME, rowIndex, rowIndex);
         ValueRange updateBody = new ValueRange()
-            .setValues(List.of(List.of(item.getId(), item.getName(), item.getQuantity())));
+                .setValues(List.of(List.of(item.getId(), item.getName(), item.getQuantity())));
 
         sheetsService.spreadsheets().values()
                 .update(spreadsheetId, range, updateBody)
@@ -71,15 +82,35 @@ public class ItemService {
         logAction("UPDATE", "Item atualizado: " + item.toString());
     }
 
-   public void delete(Long id) throws IOException{
-       int rowIndex = findRowById(id);
-       if (rowIndex != -1) {
-           ClearValuesRequest requestBody = new ClearValuesRequest();
-           String range = String.format("%s!A%d:C%d", DATA_SHEET_NAME, rowIndex, rowIndex);
-           sheetsService.spreadsheets().values().clear(spreadsheetId, range, requestBody).execute();
-           logAction("DELETE", "Item deletado com ID: " + id);
-       }
-   }
+    public void delete(Long id) throws IOException {
+        int rowIndex = findRowById(id);
+        if (rowIndex != -1) {
+            ClearValuesRequest requestBody = new ClearValuesRequest();
+            String range = String.format("%s!A%d:C%d", DATA_SHEET_NAME, rowIndex, rowIndex);
+            sheetsService.spreadsheets().values().clear(spreadsheetId, range, requestBody).execute();
+            logAction("DELETE", "Item deletado com ID: " + id);
+        }
+    }
+
+    public void createBatch(List<Item> items) throws IOException {
+        List<List<Object>> rows = items.stream()
+                .map(item -> {
+                    List<Object> row = new ArrayList<>();
+                    row.add(item.getId());
+                    row.add(item.getName());
+                    row.add(item.getQuantity());
+                    return row;
+                })
+                .collect(Collectors.toList());
+
+        ValueRange appendBody = new ValueRange().setValues(rows);
+        sheetsService.spreadsheets().values()
+                .append(spreadsheetId, DATA_SHEET_NAME, appendBody)
+                .setValueInputOption("RAW")
+                .execute();
+
+        logAction("CREATE_BATCH", items.size() + " itens criados.");
+    }
     private int findRowById(Long id) throws IOException {
         String range = DATA_SHEET_NAME + "!A:A";
         ValueRange response = sheetsService.spreadsheets().values()
@@ -88,32 +119,34 @@ public class ItemService {
 
         List<List<Object>> values = response.getValues();
         if (values != null) {
-            // O loop começa em 1 para pular o cabeçalho
-            for (int i = 1; i < values.size(); i++) {
-                if (!values.get(i).isEmpty() && values.get(i).get(0).toString().equals(id.toString())) {
-                    return i + 1; // Retorna o número da linha na planilha (base 1)
+            for (int i = 1; i < values.size(); i++) { // Começa em 1 para pular o cabeçalho
+                if (values.get(i) != null && !values.get(i).isEmpty()) {
+                    try {
+                        // MELHORIA: Compara os valores como números para maior precisão
+                        Long cellId = Long.parseLong(values.get(i).get(0).toString());
+                        if (cellId.equals(id)) {
+                            return i + 1;
+                        }
+                    } catch (NumberFormatException e) {
+                        // Ignora a linha se o ID na planilha não for um número.
+                        // Isso evita que a aplicação quebre se alguém digitar texto na coluna de ID.
+                        continue;
+                    }
                 }
             }
         }
         return -1;
     }
 
-
     private void logAction(String acao, String detalhes) throws IOException {
-        // 1. Pega a data e hora atuais e formata
         String timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
 
-        // 2. Cria a lista de valores na ordem correta das colunas
-        //    Timestamp -> Coluna A, Ação -> Coluna B, Detalhes -> Coluna C
         ValueRange appendBody = new ValueRange()
                 .setValues(List.of(List.of(timestamp, acao, detalhes)));
 
-        // 3. Adiciona a nova linha na aba de Logs
         sheetsService.spreadsheets().values()
                 .append(spreadsheetId, LOG_SHEET_NAME, appendBody)
                 .setValueInputOption("RAW")
                 .execute();
     }
-
 }
-
