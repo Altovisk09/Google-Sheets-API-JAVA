@@ -1,3 +1,58 @@
+# 🚀 API de Integração com Google Sheets
+
+Este projeto é uma API RESTful construída com **Spring Boot** que demonstra como realizar operações de **CRUD (Create, Read, Update, Delete)** em uma Planilha Google (Google Sheets) de forma programática.
+
+O objetivo principal é servir como um projeto base e um guia de estudo para entender a fundo a autenticação e manipulação de dados utilizando a **Google Sheets API v4** em um ambiente Java, com foco em boas práticas de configuração e segurança.
+
+## ✅ Requisitos para Rodar o Projeto
+
+Antes de começar, garanta que você tenha o seguinte ambiente configurado:
+
+1.  **Java Development Kit (JDK):** Versão **21** ou superior.
+2.  **Apache Maven:** Ferramenta para gerenciamento de dependências e build do projeto.
+3.  **Conta no Google Cloud Platform (GCP):** Necessária para criar as credenciais de acesso à API.
+4.  **IDE de Desenvolvimento:** Como IntelliJ IDEA ou VS Code, para facilitar o desenvolvimento e execução.
+5.  **Postman (ou similar):** Ferramenta para testar os endpoints da API.
+
+---
+
+## ⚙️ Configurando as Variáveis de Ambiente (`.env`)
+
+A segurança do projeto depende do correto gerenciamento das credenciais. **Nunca** coloque suas chaves de API ou outros segredos diretamente no código. Nós usamos um arquivo `.env` para isso.
+
+### Passo 1: Crie o arquivo `.env`
+Na **pasta raiz** do seu projeto (no mesmo nível do `pom.xml`), crie um arquivo com o nome exato `.env`.
+
+### Passo 2: Proteja o Arquivo (MUITO IMPORTANTE)
+Abra o seu arquivo `.gitignore` e adicione a seguinte linha no final. Isso garante que seus segredos não sejam enviados para o GitHub ou outro repositório.
+```gitignore
+# Ignorar arquivo de variáveis de ambiente locais
+.env
+```
+
+### Passo 3: Preencha as Variáveis
+Abra o arquivo **JSON de credenciais** que você baixou do Google Cloud e a sua Planilha Google. Copie e cole os valores correspondentes no template abaixo dentro do seu arquivo `.env`.
+
+```dotenv
+# .env - Variáveis de Ambiente para Desenvolvimento
+
+# 1. ID DA SUA PLANILHA GOOGLE
+#    (Pegue da URL da sua planilha: .../d/ESTE_É_O_ID/edit)
+GOOGLE_SPREADSHEET_ID="COLE_O_ID_DA_SUA_PLANILHA_AQUI"
+
+# 2. CREDENCIAIS DA CONTA DE SERVIÇO (copie do seu arquivo .json)
+GOOGLE_CLIENT_ID="COPIE_O_VALOR_DE_client_id_AQUI"
+GOOGLE_CLIENT_EMAIL="COPIE_O_VALOR_DE_client_email_AQUI"
+GOOGLE_PRIVATE_KEY_ID="COPIE_O_VALOR_DE_private_key_id_AQUI"
+
+# 3. CHAVE PRIVADA (copie a chave inteira do seu arquivo .json)
+#    Assegure-se de que a chave esteja entre aspas e que as quebras de linha (\n) sejam mantidas.
+GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nSUA_CHAVE_PRIVADA_COMPLETA_E_REAL_AQUI\n-----END PRIVATE KEY-----\n"
+```
+
+Com este arquivo configurado, a classe `GoogleSheetsConfig` poderá ler essas variáveis e estabelecer a conexão segura com a API.
+
+---
 ## Entendendo as Peças: O Papel de Cada Biblioteca (`pom.xml`)
 
 Seu `pom.xml` é como a lista de ingredientes da sua receita. Cada dependência tem um papel fundamental e especializado. Vamos agrupá-las por função.
@@ -58,91 +113,6 @@ A operação `batchUpdate` é o canivete suíço da API. Ela permite que você e
 * Adicionar um gráfico.
 
 **Conclusão:** Pense no Google Sheets não apenas como uma tabela, mas como um motor de relatórios. Com a API, sua aplicação Java pode automatizar a criação de dashboards financeiros, relatórios de vendas, controles de estoque ou qualquer outra tarefa que hoje você faria manualmente, combinando o poder de processamento do Java com a flexibilidade e a interface visual do Google Sheets.
-
-Esta classe, `GoogleSheetsConfig`, é o coração da sua conexão. Ela atua como a "sala de máquinas" ou o "motor de autenticação" do seu projeto. Vamos entender em detalhes como ela conecta as variáveis de ambiente do seu arquivo `.env` até o objeto final que manipula a planilha.
-
-O processo todo pode ser resumido em duas grandes etapas: **Injeção dos Segredos** e **Construção do Serviço**.
-
----
-## Etapa 1: A Injeção dos Segredos (O Papel do `@Value`)
-
-As variáveis no topo da sua classe são as portas de entrada para as suas credenciais.
-
-```java
-@Configuration
-public class GoogleSheetsConfig {
-
-    @Value("${google.credentials.client-id}")
-    private String clientId;
-
-    @Value("${google.credentials.client-email}")
-    private String clientEmail;
-
-    // ... e assim por diante
-}
-```
-
-* **`@Configuration`**: Esta anotação diz ao Spring: "Esta classe é uma fonte de definições de beans". Beans são os objetos que formam a espinha dorsal da sua aplicação, gerenciados pelo Spring.
-* **`@Value("${...}")`**: Esta é uma das anotações mais poderosas do Spring. Ela funciona como um injetor de valores. Para cada campo (`clientId`, `clientEmail`, etc.), ela executa a seguinte busca:
-    1.  Ela procura por uma propriedade com o nome `google.credentials.client-id` (e os outros) nas fontes de configuração do Spring.
-    2.  Nosso arquivo `application.properties` define essa propriedade e a mapeia para uma variável de ambiente: `google.credentials.client-id=${GOOGLE_CLIENT_ID}`.
-    3.  A biblioteca `dotenv-java` (que configuramos na classe principal) já leu seu arquivo `.env` e carregou a variável `GOOGLE_CLIENT_ID` para dentro do ambiente da aplicação.
-    4.  O Spring então conecta tudo, pegando o valor do `.env`, passando pelo `application.properties` e **injetando** o valor final diretamente no campo `private String clientId;`.
-
-**Em resumo, a anotação `@Value` é a ponte que traz os segredos guardados no seu arquivo `.env` para dentro do seu código Java de forma segura.**
-
----
-## Etapa 2: A Construção do Serviço (O Papel do `@Bean`)
-
-O método `sheetsService()` é uma "fábrica". A anotação `@Bean` diz ao Spring: "Execute este método, pegue o objeto que ele retorna (um objeto `Sheets`) e guarde-o no seu contêiner. Se qualquer outra parte da aplicação (como o `ItemService`) pedir por um objeto `Sheets`, entregue este que você guardou".
-
-Vamos dissecar o que acontece dentro dessa fábrica.
-
-```java
-@Bean
-public Sheets sheetsService() throws IOException, GeneralSecurityException {
-
-    // 1. O Canal de Comunicação
-    final NetHttpTransport HTTP_TRANSPORT = GoogleNetHttpTransport.newTrustedTransport();
-
-    // 2. A Montagem do "Documento" de Credenciais
-    String credentialsJsonString = String.format(...);
-    InputStream credentialsStream = new ByteArrayInputStream(credentialsJsonString.getBytes());
-
-    // 3. A Criação da Identidade Digital
-    GoogleCredentials credential = ServiceAccountCredentials.fromStream(credentialsStream)
-            .createScoped(Collections.singleton(SheetsScopes.SPREADSHEETS));
-
-    // 4. O Assistente de Autenticação
-    HttpRequestInitializer requestInitializer = new HttpCredentialsAdapter(credential);
-
-    // 5. A Montagem Final do "Controle Remoto"
-    return new Sheets.Builder(HTTP_TRANSPORT, JSON_FACTORY, requestInitializer)
-            .setApplicationName("Spring Sheets CRUD")
-            .build();
-}
-```
-
-1.  **O Canal de Comunicação:** `GoogleNetHttpTransport.newTrustedTransport()` simplesmente estabelece um canal de comunicação seguro (HTTPS) para conversar com os servidores do Google.
-
-2.  **A Montagem do "Documento":** Aqui, nós pegamos as variáveis injetadas (`this.clientId`, `this.clientEmail`, etc.) e usamos `String.format()` para construir um texto JSON em memória. Esse texto é uma réplica mínima, mas completa, do arquivo JSON original que o Google nos deu. Em seguida, `new ByteArrayInputStream(...)` transforma esse texto em um "fluxo de dados", que é o formato que a biblioteca de autenticação sabe ler.
-
-3.  **A Criação da Identidade (`GoogleCredentials`):** Esta é a etapa de validação. O método `ServiceAccountCredentials.fromStream(...)` lê o fluxo de dados, analisa o JSON, valida se todos os campos necessários estão lá (`client_id`, `private_key`, etc.) e, se tudo estiver correto, cria um objeto `GoogleCredentials`. Este objeto é a representação da identidade digital e autenticada da sua aplicação. Em seguida, `.createScoped(...)` anexa as permissões a essa identidade, dizendo "esta identidade tem permissão para fazer tudo em planilhas".
-
-4.  **O Assistente de Autenticação (`HttpCredentialsAdapter`):** Pense neste objeto como um "assistente" que acompanha todas as suas futuras requisições. O trabalho dele é interceptar cada chamada que você fizer à API (como um `get` ou `append`) e anexar automaticamente os cabeçalhos de autenticação necessários. É por causa dele que você não precisa se preocupar com autenticação no `ItemService`.
-
-5.  **A Montagem Final (`Sheets.Builder`):** Finalmente, construímos o objeto `Sheets`. Nós entregamos ao construtor:
-    * O canal de comunicação (`HTTP_TRANSPORT`).
-    * O idioma que será falado (`JSON_FACTORY`, que definimos como Gson).
-    * O assistente de autenticação (`requestInitializer`).
-
-O método `.build()` junta tudo e retorna o objeto `Sheets` final: um "controle remoto" totalmente configurado, autenticado e pronto para ser usado.
-
-### Fluxo de Dados Resumido
-
-O caminho completo da sua credencial é este:
-
-`Arquivo .env` → `dotenv-java` → `Variáveis de Ambiente` → `application.properties` → `@Value` nos campos da classe → `String.format()` → `InputStream` → `GoogleCredentials` → **`Objeto Sheets`** → Injetado no `ItemService`
 
 Esta classe, `GoogleSheetsConfig`, é o coração da sua conexão. Ela atua como a "sala de máquinas" ou o "motor de autenticação" do seu projeto. Vamos entender em detalhes como ela conecta as variáveis de ambiente do seu arquivo `.env` até o objeto final que manipula a planilha.
 
@@ -312,86 +282,4 @@ Estes métodos demonstram boas práticas de programação, como a extração de 
 
 * **Objetivo:** Centralizar e padronizar o registro de todas as ações.
 * **Estratégia:** Encapsula a lógica de criar um timestamp e usar o método `append` na aba de "Logs". Isso evita a repetição de código e torna os métodos CRUD mais limpos e focados em sua responsabilidade principal.
-
-## ⚙️ Configuração do Google Sheets no Spring Boot
-
-Para se conectar ao Google Sheets de forma segura, usamos uma **Service Account** e carregamos as credenciais via **variáveis de ambiente**.  
-Isso evita expor o arquivo `credentials.json` no projeto.
-
-### Classe de Configuração (`GoogleSheetsConfig.java`)
-
-```java
-package com.crud.Sheets.config;
-
-import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
-import com.google.api.client.http.HttpRequestInitializer;
-import com.google.api.client.http.javanet.NetHttpTransport;
-import com.google.api.client.json.JsonFactory;
-import com.google.api.client.json.gson.GsonFactory;
-import com.google.api.services.sheets.v4.Sheets;
-import com.google.api.services.sheets.v4.SheetsScopes;
-import com.google.auth.http.HttpCredentialsAdapter;
-import com.google.auth.oauth2.GoogleCredentials;
-import com.google.auth.oauth2.ServiceAccountCredentials;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.security.GeneralSecurityException;
-import java.util.Collections;
-
-@Configuration
-public class GoogleSheetsConfig {
-
-    @Value("${google.credentials.client-id}")
-    private String clientId;
-
-    @Value("${google.credentials.client-email}")
-    private String clientEmail;
-
-    @Value("${google.credentials.private-key-id}")
-    private String privateKeyId;
-
-    @Value("${google.credentials.private-key}")
-    private String privateKey;
-
-    private static final JsonFactory JSON_FACTORY = GsonFactory.getDefaultInstance();
-
-    @Bean
-    public Sheets sheetsService() throws IOException, GeneralSecurityException {
-        final NetHttpTransport HTTP_TRANSPORT = GoogleNetHttpTransport.newTrustedTransport();
-
-        // Corrige quebras de linha na chave privada (importante!)
-        String fixedPrivateKey = privateKey.replace("\\n", "\n");
-
-        // Monta o JSON em memória com todos os campos esperados
-        String credentialsJsonString = String.format(
-                "{" +
-                        "\"type\": \"service_account\", " +
-                        "\"client_id\": \"%s\", " +
-                        "\"private_key_id\": \"%s\", " +
-                        "\"private_key\": \"%s\", " +
-                        "\"client_email\": \"%s\" " +
-                "}",
-                this.clientId,
-                this.privateKeyId,
-                fixedPrivateKey,
-                this.clientEmail
-        );
-
-        InputStream credentialsStream = new ByteArrayInputStream(credentialsJsonString.getBytes());
-
-        GoogleCredentials credential = ServiceAccountCredentials.fromStream(credentialsStream)
-                .createScoped(Collections.singleton(SheetsScopes.SPREADSHEETS));
-
-        HttpRequestInitializer requestInitializer = new HttpCredentialsAdapter(credential);
-
-        return new Sheets.Builder(HTTP_TRANSPORT, JSON_FACTORY, requestInitializer)
-                .setApplicationName("Spring Sheets CRUD")
-                .build();
-    }
-}
 
